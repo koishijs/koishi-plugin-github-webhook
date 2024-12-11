@@ -1,54 +1,36 @@
 {
   "name": "koishi-plugin-github-webhook",
-  "description": "GitHub webhook plugin for Koishi",
-  "version": "1.0.0-alpha.1",
-  "main": "dist/index.js",
-  "typings": "dist/index.d.ts",
+  "description": "github webhook",
+  "version": "2.0.2",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
   "files": [
+    "lib",
     "dist"
   ],
-  "author": "Shigma <1700011071@pku.edu.cn>",
   "license": "MIT",
-  "scripts": {
-    "lint": "eslint src --ext .ts",
-    "prepack": "tsc -b"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/koishijs/plugin-github-webhook.git"
-  },
-  "bugs": {
-    "url": "https://github.com/koishijs/plugin-github-webhook/issues"
-  },
-  "homepage": "https://koishi.js.org/plugins/other/github-webhook",
   "keywords": [
-    "bot",
-    "qqbot",
-    "cqhttp",
-    "coolq",
     "chatbot",
     "koishi",
-    "plugin",
-    "github",
-    "webhook"
+    "plugin"
   ],
+  "koishi": {
+    "service": {
+      "required": [
+        "server"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@koishijs/plugin-server": "^3.2.4",
+    "koishi": "^4.18.0"
+  },
   "devDependencies": {
-    "@types/jest": "^24.9.0",
-    "@typescript-eslint/eslint-plugin": "^2.17.0",
-    "@typescript-eslint/parser": "^2.17.0",
-    "eslint": "^6.8.0",
-    "eslint-config-standard": "^14.1.0",
-    "eslint-plugin-import": "^2.20.0",
-    "eslint-plugin-node": "^11.0.0",
-    "eslint-plugin-promise": "^4.2.1",
-    "eslint-plugin-standard": "^4.0.1",
-    "jest": "^24.9.0",
-    "ts-jest": "^24.3.0",
-    "koishi-test-utils": "^2.1.0",
-    "typescript": "^3.7.5"
+    "@koishijs/plugin-server": "^3.2.4",
+    "@koishijs/plugin-event-server": "^0.0.1",
+    "koishi": "^4.18.0"
   },
   "dependencies": {
-    "@octokit/webhooks": "^7.0.0",
-    "koishi-core": "^1.6.0"
+    "@octokit/webhooks-types": "^7.6.1"
   }
 }

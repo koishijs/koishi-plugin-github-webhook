@@ -1,3 +1,5 @@
-# [koishi-plugin-github-webhook](https://koishi.js.org/plugins/other/github-webhook)
+# koishi-plugin-github-webhook
 
-Using GitHub Webhooks with Koishi.
+[![npm](https://img.shields.io/npm/v/koishi-plugin-github-webhook?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-github-webhook)
+
+github webhook

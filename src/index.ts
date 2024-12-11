@@ -1,142 +1,83 @@
-import { Context, onStart, onStop } from 'koishi-core'
-import { Server, createServer } from 'http'
-import WebhookAPI, { PayloadRepository, WebhookEvent } from '@octokit/webhooks'
+import { EventPayloadMap, WebhookEventName } from '@octokit/webhooks-types/schema'
+import { Context, Schema } from 'koishi'
+import {} from '@koishijs/plugin-server'
+import {} from 'koishi-plugin-event-server'
+import { createHmac } from 'node:crypto'
 
-declare module 'koishi-core/dist/app' {
-  export interface AppOptions {
-    githubWebhook?: WebhookConfig
-  }
+type ActionName<E extends WebhookEventName> =
+  | EventPayloadMap[E] extends { action: infer A }
+  ? string extends A ? never : A
+  : never
+
+export type WebhookEventNameWithAction = keyof {
+  [E in WebhookEventName as E | `${E}/${ActionName<E>}`]: never
 }
 
-export interface WebhookConfig {
-  port?: number
-  secret?: string
-  path?: string
+export type Payload<T extends WebhookEventNameWithAction> = T extends `${infer E}/${infer A}`
+  ? EventPayloadMap[E & WebhookEventName] & { action: A }
+  : EventPayloadMap[T & WebhookEventName]
+
+type WebhookEventMap = {
+  [E in WebhookEventNameWithAction as `github/${E}`]: (payload: Payload<E>) => void
 }
 
-export const webhooks: Record<string, WebhookAPI> = {}
-export const servers: Record<number, Server> = {}
-
-const defaultOptions: WebhookConfig = {
-  port: 12140,
-  secret: '',
-  path: '/',
-}
-
-interface RepositoryPayload {
-  repository: PayloadRepository
+declare module 'koishi' {
+  interface Events extends WebhookEventMap {}
 }
 
 export const name = 'github-webhook'
 
-export function apply (ctx: Context, options: Record<string, number[]> = {}) {
-  ctx = ctx.intersect(ctx.app.groups)
+export const inject = ['server']
 
-  const config = ctx.app.options.githubWebhook = {
-    ...defaultOptions,
-    ...ctx.app.options.githubWebhook,
-  }
+export interface Webhook {
+  id: number
+  secret: string
+}
 
-  const key = config.path + config.secret + config.port
-  if (!webhooks[key]) {
-    webhooks[key] = new WebhookAPI(config as any)
-  }
-  const webhook = webhooks[key]
+export const Webhook: Schema<Webhook> = Schema.object({
+  id: Schema.number().required(),
+  secret: Schema.string().required(),
+})
 
-  if (!servers[config.port]) {
-    const server = servers[config.port] = createServer(webhooks[key].middleware)
-    onStart(() => server.listen(config.port))
-    onStop(() => server.close())
-  }
+export interface Config {
+  path: string
+  webhooks: Webhook[]
+}
 
-  function wrapHandler <T extends RepositoryPayload> (handler: (event: T) => void | string | Promise<void | string>) {
-    return async (event: WebhookEvent<T>) => {
-      const { repository } = event.payload
-      const groups = options[repository.full_name]
-      if (!groups) return
+export const Config: Schema<Config> = Schema.object({
+  path: Schema.string().default('/github/webhook'),
+  webhooks: Schema.array(Webhook).required(),
+})
 
-      const message = await handler(event.payload)
-      if (!message) return
-      for (const id of groups) {
-        await ctx.sender.sendGroupMsgAsync(id, message)
-      }
+function safeParse(source: string) {
+  try {
+    return JSON.parse(source)
+  } catch {}
+}
+
+export function apply(ctx: Context, config: Config) {
+  ctx.inject(['eventServer'], (ctx) => {
+    ctx.eventServer.register('github/*')
+  })
+
+  ctx.server.post(config.path, async (koa) => {
+    const event = koa.headers['x-github-event'].toString()
+    const signature = koa.headers['x-hub-signature-256']
+    const eventId = koa.headers['x-github-delivery']
+    const webhookId = +koa.headers['x-github-hook-id']
+    const payload = safeParse(koa.request.body.payload)
+    if (!payload) return koa.status = 400
+    ctx.logger.debug('received %s (%s)', event, eventId)
+    const webhook = config.webhooks.find(webhook => webhook.id === webhookId)
+    if (!webhook) return koa.status = 404
+    const raw = koa.request.body[Symbol.for('unparsedBody')]
+    if (signature !== `sha256=${createHmac('sha256', webhook.secret).update(raw).digest('hex')}`) {
+      return koa.status = 403
     }
-  }
-
-  webhook.on('commit_comment.created', wrapHandler<WebhookAPI.WebhookPayloadCommitComment>(({ repository, comment }) => {
-    return [
-      `[GitHub] Commit Comment (${repository.full_name})`,
-      `User: ${comment.user.login}`,
-      `URL: ${comment.html_url}`,
-      comment.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('issues.opened', wrapHandler<WebhookAPI.WebhookPayloadIssues>(({ repository, issue }) => {
-    return [
-      `[GitHub] Issue Opened (${repository.full_name}#${issue.number})`,
-      `Title: ${issue.title}`,
-      `User: ${issue.user.login}`,
-      `URL: ${issue.html_url}`,
-      issue.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('issue_comment.created', wrapHandler<WebhookAPI.WebhookPayloadIssueComment>(({ comment, issue, repository }) => {
-    return [
-      `[GitHub] ${issue['pull_request'] ? 'Pull Request' : 'Issue'} Comment (${repository.full_name}#${issue.number})`,
-      `User: ${comment.user.login}`,
-      `URL: ${comment.html_url}`,
-      comment.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('pull_request.opened', wrapHandler<WebhookAPI.WebhookPayloadPullRequest>(({ repository, pull_request }) => {
-    return [
-      `[GitHub] Pull Request Opened (${repository.full_name}#${pull_request.id})`,
-      `${pull_request.base.label} <- ${pull_request.head.label}`,
-      `User: ${pull_request.user.login}`,
-      `URL: ${pull_request.html_url}`,
-      pull_request.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('pull_request_review.submitted', wrapHandler<WebhookAPI.WebhookPayloadPullRequestReview>(({ repository, review, pull_request }) => {
-    if (!review.body) return
-    return [
-      `[GitHub] Pull Request Review (${repository.full_name}#${pull_request.id})`,
-      `User: ${review.user.login}`,
-      `URL: ${review.html_url}`,
-      // @ts-ignore
-      review.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('pull_request_review_comment.created', wrapHandler<WebhookAPI.WebhookPayloadPullRequestReviewComment>(({ repository, comment, pull_request }) => {
-    return [
-      `[GitHub] Pull Request Review Comment (${repository.full_name}#${pull_request.id})`,
-      `Path: ${comment.path}`,
-      `User: ${comment.user.login}`,
-      `URL: ${comment.html_url}`,
-      comment.body.replace(/\n\s*\n/g, '\n'),
-    ].join('\n')
-  }))
-
-  webhook.on('push', wrapHandler<WebhookAPI.WebhookPayloadPush>(({ compare, pusher, commits, repository, ref, after }) => {
-    // do not show pull request merge
-    if (/^0+$/.test(after)) return
-
-    // use short form for tag releases
-    if (ref.startsWith('refs/tags')) {
-      return `[GitHub] ${repository.full_name} published tag ${ref.slice(10)}`
+    ctx.emit(`github/${event}`, payload)
+    if (payload.action) {
+      ctx.emit(`github/${event}/${payload.action}`, payload)
     }
-
-    return [
-      `[GitHub] Push (${repository.full_name})`,
-      `Ref: ${ref}`,
-      `User: ${pusher.name}`,
-      `Compare: ${compare}`,
-      ...commits.map(c => c.message.replace(/\n\s*\n/g, '\n')),
-    ].join('\n')
-  }))
+    koa.status = 200
+  })
 }
