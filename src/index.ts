@@ -30,12 +30,14 @@ export const name = 'github-webhook'
 export const inject = ['server']
 
 export interface Webhook {
-  id: number
+  id?: number
+  repo: string
   secret: string
 }
 
 export const Webhook: Schema<Webhook> = Schema.object({
-  id: Schema.number().required(),
+  id: Schema.number(),
+  repo: Schema.string().required(),
   secret: Schema.string().required(),
 })
 
@@ -63,12 +65,14 @@ export function apply(ctx: Context, config: Config) {
   ctx.server.post(config.path, async (koa) => {
     const event = koa.headers['x-github-event'].toString()
     const signature = koa.headers['x-hub-signature-256']
-    const eventId = koa.headers['x-github-delivery']
     const webhookId = +koa.headers['x-github-hook-id']
     const payload = safeParse(koa.request.body.payload)
     if (!payload) return koa.status = 400
-    ctx.logger.debug('received %s (%s)', event, eventId)
-    const webhook = config.webhooks.find(webhook => webhook.id === webhookId)
+    ctx.logger.debug('received %s for %s', event, payload.repository.full_name)
+    const webhook = config.webhooks.find(webhook => {
+      if (webhook.id !== undefined && webhook.id !== webhookId) return false
+      return webhook.repo === payload.repository.full_name
+    })
     if (!webhook) return koa.status = 404
     const raw = koa.request.body[Symbol.for('unparsedBody')]
     if (signature !== `sha256=${createHmac('sha256', webhook.secret).update(raw).digest('hex')}`) {
