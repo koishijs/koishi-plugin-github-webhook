@@ -68,7 +68,7 @@ export function apply(ctx: Context, config: Config) {
     const webhookId = +koa.headers['x-github-hook-id']
     const payload = safeParse(koa.request.body.payload)
     if (!payload) return koa.status = 400
-    ctx.logger.debug('received %s for %s', event, payload.repository.full_name)
+    ctx.logger.debug('received %s for %s', `${event}/${payload.action}`, payload.repository.full_name)
     const webhook = config.webhooks.find(webhook => {
       if (webhook.id !== undefined && webhook.id !== webhookId) return false
       return webhook.repo === payload.repository.full_name

@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-github-webhook",
   "description": "github webhook",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -27,8 +27,8 @@
   },
   "devDependencies": {
     "@koishijs/plugin-server": "^3.2.4",
-    "@koishijs/plugin-event-server": "^0.0.1",
-    "koishi": "^4.18.0"
+    "koishi": "^4.18.0",
+    "koishi-plugin-event-server": "^0.0.1"
   },
   "dependencies": {
     "@octokit/webhooks-types": "^7.6.1"
